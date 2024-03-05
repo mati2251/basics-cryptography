@@ -7,20 +7,21 @@ import (
 	"strings"
 )
 
-func sieveOfEratosthenes(n int) []int {
+func sieveOfEratosthenes(n int64) []int64 {
 	primeTest := make([]bool, n+1)
-	for i := 2; i <= n; i++ {
+	var i int64
+	for i = 2; i <= n; i++ {
 		primeTest[i] = true
 	}
-	for i := 2; i <= n; i++ {
+	for i = 2; i <= n; i++ {
 		if primeTest[i] == true {
 			for j := i * i; j <= n; j += i {
 				primeTest[j] = false
 			}
 		}
 	}
-	prime := []int{}
-	for i := 2; i <= n; i++ {
+	prime := []int64{}
+	for i = 2; i <= n; i++ {
 		if primeTest[i] == true {
 			prime = append(prime, i)
 		}
@@ -28,8 +29,9 @@ func sieveOfEratosthenes(n int) []int {
 	return prime
 }
 
-func getN(prime []int) int {
-	p := 0
+func getN(prime []int64) int64 {
+	var p int64
+	p = 0
 	for i := len(prime) - 1; i > 0; i-- {
 		if prime[i]%4 == 3 {
 			if p == 0 {
@@ -41,15 +43,15 @@ func getN(prime []int) int {
 	return 0
 }
 
-func nwd(a int, b int) int {
+func nwd(a int64, b int64) int64 {
 	if b == 0 {
 		return a
 	}
 	return nwd(b, a%b)
 }
 
-func randomX(n int) int {
-	x := rand.IntN(n)
+func randomX(n int64) int64 {
+	x := rand.Int64N(n)
 	for ok := true; ok; ok = nwd(n, x) != 1 {
 		x += 1
 	}
@@ -60,7 +62,7 @@ func randomNumber(bitsCount int) (big.Int, []bool) {
 	var number big.Int
 	bits := make([]bool, bitsCount)
 	number.SetBit(&number, 0, 0)
-	primes := sieveOfEratosthenes(1000000000)
+	primes := sieveOfEratosthenes(50402340)
 	n := getN(primes)
 	for i := 0; i < bitsCount; i++ {
 		x := randomX(n)
@@ -80,7 +82,7 @@ func testOne(numberBinary string) {
 
 func testTwoAndThree(numberBinary string) {
 	// (20000 - (2685 + 1386 * 2 + 723 * 3 + 384 * 4 + 209 * 5))/209 = 49
-	// good interval ???
+	// good int64erval ???
 	// test 2 is passed if test 3 is failed
 	fmt.Println("Test 2 (6 means 6>=): ")
 	countSeries := countSeriesOfBits(numberBinary)
@@ -117,26 +119,23 @@ func countSeriesOfBits(numberBinary string) map[int]int {
 
 func testFour(numberBinary string) {
 	fmt.Print("Test 4: ")
-	for i := 0; i < len(numberBinary)/5000; i++ {
-		currentString := numberBinary[i*5000 : (i+1)*5000]
-		counts := make(map[int]int)
-		for j := 0; j < 16; j++ {
-			binaryString := fmt.Sprintf("%04b", j)
-			counts[j] = strings.Count(currentString, binaryString)
-		}
-		var sum float32
-		sum = 0
-		for _, v := range counts {
-			sum += float32(v * v)
-		}
-		sum = (sum*16)/5000 - 5000
-		if i%100 == 0 {
-			fmt.Print(sum, " ")
-		}
-		if sum < 2.16 || sum > 46.17 {
-			fmt.Println("Failed")
-			return
-		}
+	counts := make(map[string]int)
+	for i := 0; i < 16; i++ {
+		counts[fmt.Sprintf("%04b", i)] = 0
+	}
+	for i := 0; i < len(numberBinary)/4; i++ {
+		currentString := numberBinary[i*4 : (i+1)*4]
+		counts[currentString]++
+	}
+	var sum float32
+	sum = 0
+	for _, v := range counts {
+		sum += float32(v * v)
+	}
+	sum = (sum*16)/5000 - 5000
+	if sum < 2.16 || sum > 46.17 {
+		fmt.Println("Failed")
+		return
 	}
 	fmt.Println("Passed")
 }
