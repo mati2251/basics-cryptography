@@ -81,10 +81,7 @@ func testOne(numberBinary string) {
 }
 
 func testTwoAndThree(numberBinary string) {
-	// (20000 - (2685 + 1386 * 2 + 723 * 3 + 384 * 4 + 209 * 5))/209 = 49
-	// good int64erval ???
-	// test 2 is passed if test 3 is failed
-	fmt.Println("Test 2 (6 means 6>=): ")
+  fmt.Println("Test 2 (6 means 6>=): ")
 	countSeries := countSeriesOfBits(numberBinary)
 	test3 := "Passed"
 	for k, v := range countSeries {
@@ -104,12 +101,15 @@ func countSeriesOfBits(numberBinary string) map[int]int {
 	counts := make(map[int]int)
 	currentCount := 1
 	currentBit := numberBinary[0]
+	seriesOf := numberBinary[0]
 	for i := 1; i < len(numberBinary); i++ {
 		if numberBinary[i] == currentBit {
 			currentCount++
 		}
 		if numberBinary[i] != currentBit || i == len(numberBinary)-1 {
-			counts[currentCount]++
+			if currentBit == seriesOf {
+				counts[currentCount]++
+			}
 			currentCount = 1
 			currentBit = numberBinary[i]
 		}
