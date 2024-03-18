@@ -81,7 +81,7 @@ func testOne(numberBinary string) {
 }
 
 func testTwoAndThree(numberBinary string) {
-  fmt.Println("Test 2 (6 means 6>=): ")
+	fmt.Println("Test 2 (6 means 6>=): ")
 	countSeries := countSeriesOfBits(numberBinary)
 	test3 := "Passed"
 	for k, v := range countSeries {
@@ -109,7 +109,9 @@ func countSeriesOfBits(numberBinary string) map[int]int {
 		if numberBinary[i] != currentBit || i == len(numberBinary)-1 {
 			if currentBit == seriesOf {
 				counts[currentCount]++
-			}
+			} else if currentCount > 25 {
+        counts[currentCount]++
+      }
 			currentCount = 1
 			currentBit = numberBinary[i]
 		}
