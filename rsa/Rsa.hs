@@ -1,7 +1,4 @@
-import Control.Arrow (Arrow (first))
-import GHC.Conc (pseq)
 import Math.NumberTheory.Primes
-import System.Random (RandomGen (next))
 
 bigInt = 5000
 
