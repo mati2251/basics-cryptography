@@ -11,18 +11,92 @@ import (
 
 var resultFile *os.File
 
-func addScore(ecbEncryptionTime time.Duration, ecbDecryptionTime time.Duration, cbcEncryptionTime time.Duration, cbcDecryptionTime time.Duration, ofbEncryptionTime time.Duration, ofbDecryptionTime time.Duration, cfbEncryptionTime time.Duration, cfbDecryptionTime time.Duration, ctrEncryptionTime time.Duration, ctrDecryptionTime time.Duration) {
-	resultFile.WriteString(fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n", ecbEncryptionTime, cbcEncryptionTime, ofbEncryptionTime, cfbEncryptionTime, ctrEncryptionTime, ecbDecryptionTime, cbcDecryptionTime, ofbDecryptionTime, cfbDecryptionTime, ctrDecryptionTime))
-}
-
 func check(e error) {
 	if e != nil {
 		panic(e)
 	}
 }
 
+var iv []byte
+var key []byte
+var c cipher.Block
+
+
+const (
+	ecb = "ECB"
+	cbc = "CBC"
+	ofb = "OFB"
+	cfb = "CFB"
+	ctr = "CTR"
+)
+
+var modes = [5]string{ecb, cbc, ofb, cfb, ctr}
+
+func initValues() {
+  iv = []byte("1234567890123456")
+  key = []byte("1234567890123456")
+	resultFile, _ = os.Create("results.csv")
+  var err error
+  c, err = aes.NewCipher(key)
+  check(err)
+}
+
+func getStream(cipherMode string, encrypter bool) cipher.Stream {
+	switch cipherMode {
+	case ofb:
+		return cipher.NewOFB(c, iv)
+	case cfb:
+		if encrypter {
+			return cipher.NewCFBEncrypter(c, iv)
+		}
+		return cipher.NewCFBDecrypter(c, iv)
+	case ctr:
+		return cipher.NewCTR(c, iv)
+	}
+	return nil
+}
+
+func encrypt(content []byte, mode string) []byte {
+	c, err := aes.NewCipher(key)
+	encryptedText := make([]byte, len(content))
+	check(err)
+	switch mode {
+	case ecb:
+		return ecbEncryption(content)
+	case cbc:
+		cipher.NewCBCEncrypter(c, iv).CryptBlocks(encryptedText, content)
+		return encryptedText
+	default:
+		stream := getStream(mode, true)
+		stream.XORKeyStream(encryptedText, content)
+		return encryptedText
+	}
+}
+
+func decrypt(content []byte, mode string) []byte {
+	c, err := aes.NewCipher(key)
+	check(err)
+	decryptedText := make([]byte, len(content))
+	switch mode {
+	case ecb:
+		return ecbDecryption(content)
+	case cbc:
+		cipher.NewCBCDecrypter(c, iv).CryptBlocks(decryptedText, content)
+		return decryptedText
+	default:
+		stream := getStream(mode, false)
+		stream.XORKeyStream(decryptedText, content)
+		return decryptedText
+	}
+}
+
+func addScore(score []string) {
+  scoreStr := strings.Join(score, ",")
+	resultFile.WriteString(scoreStr + "\n")
+}
+
 func readFiles() []*os.File {
-	fileNames := []string{"random_file_10KB.txt", "random_file_100KB.txt", "random_file_1MB.txt", "random_file_10MB.txt", "random_file_100MB.txt", "random_file_1GB.txt"}
+	fileNames := []string{"random_file_1MB.txt", "random_file_10MB.txt", "random_file_100MB.txt", "random_file_1GB.txt"}
 	files := make([]*os.File, len(fileNames))
 	for index, fileName := range fileNames {
 		file, err := os.Open(fileName)
@@ -32,167 +106,79 @@ func readFiles() []*os.File {
 	return files
 }
 
-func timeEncryptionComparison(content []byte, key []byte, iv []byte, size int64) {
-	fmt.Println("Time encryption comparison")
-	c, err := aes.NewCipher(key)
-	check(err)
-	startTime := time.Now()
-	ecbEncryption(c, content)
-	ecbEncryptionTime := time.Since(startTime)
-	fmt.Printf("Time to encrypt: %s\n", ecbEncryptionTime)
-	startTime = time.Now()
-	ecbDecryption(c, content)
-	ecbDecryptionTime := time.Since(startTime)
-	fmt.Printf("Time to decrypt: %s\n", ecbDecryptionTime)
+func timeEncryptionComparison() {
+  fmt.Println("Time encryption comparison")
+	files := readFiles()
 
-	fmt.Printf("CBC mode\n")
-	cbcEncryptionTime, cbcDecryptionTime := timeEncryptionBlock(content, cipher.NewCBCEncrypter(c, iv), cipher.NewCBCDecrypter(c, iv))
-
-	fmt.Printf("OFB mode\n")
-	ofbEncryptionTime, ofbDecryptionTime := timeEncryptionStream(content, cipher.NewOFB(c, iv), cipher.NewOFB(c, iv))
-
-	fmt.Printf("CFB mode\n")
-	cfbEncryptionTime, cfbDecryptionTime := timeEncryptionStream(content, cipher.NewCFBEncrypter(c, iv), cipher.NewCFBDecrypter(c, iv))
-
-	fmt.Printf("CTR mode\n")
-	ctrEncryptionTime, ctrDecryptionTime := timeEncryptionStream(content, cipher.NewCTR(c, iv), cipher.NewCTR(c, iv))
-
-	addScore(ecbEncryptionTime, ecbDecryptionTime, cbcEncryptionTime, cbcDecryptionTime, ofbEncryptionTime, ofbDecryptionTime, cfbEncryptionTime, cfbDecryptionTime, ctrEncryptionTime, ctrDecryptionTime)
+	for _, file := range files {
+		stats, err := file.Stat()
+		check(err)
+		fmt.Printf("File: %s, Size: %d bytes\n", stats.Name(), stats.Size())
+		content := make([]byte, stats.Size())
+		_, err = file.Read(content)
+		check(err)
+    score := make([]string, 10)
+    
+    for i, mode := range modes {
+        fmt.Printf("%s mode\n", mode)
+      	startTime := time.Now()
+        encrypt(content, mode)
+        encryptionTime := time.Since(startTime)
+        fmt.Printf("Time to encrypt %s: %s\n", mode, encryptionTime)
+        score[i] = encryptionTime.String()
+        startTime = time.Now()
+        decrypt(content, mode)
+        decryptionTime := time.Since(startTime)
+        score[i+5] = decryptionTime.String()
+        fmt.Printf("Time to decrypt %s: %s\n", mode, decryptionTime)
+    }
+    addScore(score)
+	}
 	fmt.Printf("\n")
-}
-
-func timeEncryptionBlock(content []byte, encryption cipher.BlockMode, decryption cipher.BlockMode) (time.Duration, time.Duration) {
-	fmt.Println("Time encryption")
-	startTime := time.Now()
-	decrypted := make([]byte, len(content))
-	encryption.CryptBlocks(decrypted, content)
-	encryptionTime := time.Since(startTime)
-	fmt.Printf("Time to encrypt: %s\n", encryptionTime)
-	startTime = time.Now()
-	decryption.CryptBlocks(decrypted, content)
-	decryptionTime := time.Since(startTime)
-	fmt.Printf("Time to decrypt: %s\n", decryptionTime)
-	return encryptionTime, decryptionTime
-}
-
-func timeEncryptionStream(content []byte, encryption cipher.Stream, decryption cipher.Stream) (time.Duration, time.Duration) {
-	fmt.Println("Time encryption")
-	startTime := time.Now()
-	decrypted := make([]byte, len(content))
-	encryption.XORKeyStream(decrypted, content)
-	encryptionTime := time.Since(startTime)
-	fmt.Printf("Time to encrypt: %s\n", encryptionTime)
-	startTime = time.Now()
-	decryption.XORKeyStream(decrypted, content)
-	decryptionTime := time.Since(startTime)
-	fmt.Printf("Time to decrypt: %s\n", decryptionTime)
-	return encryptionTime, decryptionTime
 }
 
 func errorPropagationComprasion() {
 	fmt.Println("Error propagation")
-	key := []byte("1234567890123456")
-	iv := []byte("1234567890123456")
-	c, err := aes.NewCipher(key)
-	check(err)
-	content := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit blandit.")
-	badContent := []byte("Lorem ipsum iolor sit amet, consectetur adipiscing elit blandit.")
-	badEncrypted := make([]byte, len(content))
-	encrypted := make([]byte, len(content))
-	decrypted := make([]byte, len(content))
-
-	fmt.Println("ECB mode")
-	badEncrypted = ecbEncryption(c, badContent)
-	encrypted = ecbEncryption(c, content)
-	fmt.Printf("Bad encryption: %08b\n", badEncrypted)
-	fmt.Printf("Valid encryption: %08b\n", encrypted)
-	err = os.WriteFile("errors/bad_encrypted_ecb.txt", badEncrypted, 0644)
-	check(err)
-	err = os.WriteFile("errors/encrypted_ecb.txt", encrypted, 0644)
-	check(err)
-	encrypted[17] = 0
-	encrypted[18] = 0
-	encrypted[19] = 0
-	decrypted = ecbDecryption(c, encrypted)
-	fmt.Printf("Bad decryption: %s\n", string(decrypted))
-	fmt.Printf("Valid decryption: %s\n", string(content))
-	err = os.WriteFile("errors/bad_decrypted_ecb.txt", decrypted, 0644)
-	check(err)
-	err = os.WriteFile("errors/decrypted_ecb.txt", content, 0644)
-	check(err)
-
-	fmt.Println("CBC mode")
-	encryption := cipher.NewCBCEncrypter(c, iv)
-	decryption := cipher.NewCBCDecrypter(c, iv)
-	encryption.CryptBlocks(badEncrypted, badContent)
-	encryption.CryptBlocks(encrypted, content)
-	fmt.Printf("Bad encryption: %08b\n", badEncrypted)
-	fmt.Printf("Valid encryption: %08b\n", encrypted)
-	err = os.WriteFile("errors/bad_encrypted_cbc.txt", badEncrypted, 0644)
-	check(err)
-	err = os.WriteFile("errors/encrypted_cbc.txt", encrypted, 0644)
-	check(err)
-	encrypted[17] = 0
-	encrypted[18] = 0
-	encrypted[19] = 0
-	decryption.CryptBlocks(decrypted, encrypted)
-	fmt.Printf("Bad decryption: %s\n", string(decrypted))
-	fmt.Printf("Valid decryption: %s\n", string(content))
-	err = os.WriteFile("errors/bad_decrypted_cbc.txt", decrypted, 0644)
-	check(err)
-	err = os.WriteFile("errors/decrypted_cbc.txt", content, 0644)
-	check(err)
-
-	errorPropagationStream(cipher.NewOFB(c, iv), cipher.NewOFB(c, iv), content, badContent, "OFB")
-
-	errorPropagationStream(cipher.NewCFBEncrypter(c, iv), cipher.NewCFBDecrypter(c, iv), content, badContent, "CFB")
-
-	errorPropagationStream(cipher.NewCTR(c, iv), cipher.NewCTR(c, iv), content, badContent, "CTR")
-
-	fmt.Println()
+  for _, mode := range modes {
+    fmt.Printf("%s mode\n", mode)
+    content := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla odio tortor, finibus eu purus laoreet, blandit ultricies elit. Donec maximus ligula ac posuere mollis. Vestibulum in lacus sed turpis viverra aliquet. Proin mollis purus nec semper dictum nunc.")
+    goodCipherText := encrypt(content, mode)
+    err := os.WriteFile("errors/good_encrypted_" + mode + ".txt", goodCipherText, 0644)
+    check(err)
+    err = os.WriteFile("errors/good_decrypted_" + mode + ".txt", content, 0644)
+    check(err)
+    content[36] = byte(20)
+    badCipherText := encrypt(content, mode)
+    err = os.WriteFile("errors/bad_encrypted_" + mode + ".txt", badCipherText, 0644)
+    fmt.Printf("Good encryption: %s\n", goodCipherText)
+    fmt.Printf("Bad encryption: %s\n", badCipherText)
+    check(err)
+    goodCipherText[36] = goodCipherText[36] + 1
+    decrypted := decrypt(goodCipherText, mode)
+    err = os.WriteFile("errors/bad_decrypted_" + mode + ".txt", decrypted, 0644)
+    check(err)
+    fmt.Printf("Bad decryption: %s\n", decrypted)
+    fmt.Printf("Valid decryption: %s\n", string(content))
+  }
+  fmt.Printf("\n")
 }
 
-func errorPropagationStream(encryption cipher.Stream, decryption cipher.Stream, content []byte, badContent []byte, mode string) {
-	fmt.Printf("%s mode\n", mode)
-	decrypted := make([]byte, len(content))
-	encrypted := make([]byte, len(content))
-	badEncrypted := make([]byte, len(content))
-
-	encryption.XORKeyStream(badEncrypted, badContent)
-	encryption.XORKeyStream(encrypted, content)
-	fmt.Printf("Bad encryption: %08b\n", badEncrypted)
-	fmt.Printf("Valid encryption: %08b\n", encrypted)
-	err := os.WriteFile("errors/bad_encrypted_"+strings.ToLower(mode)+".txt", badEncrypted, 0644)
-	check(err)
-	err = os.WriteFile("errors/encrypted_"+strings.ToLower(mode)+".txt", encrypted, 0644)
-
-	encrypted[17] = 0
-	encrypted[18] = 0
-	encrypted[19] = 0
-	decryption.XORKeyStream(decrypted, encrypted)
-	fmt.Printf("Bad decryption: %s\n", string(decrypted))
-	fmt.Printf("Valid decryption: %s\n", string(content))
-	err = os.WriteFile("errors/bad_decrypted_"+strings.ToLower(mode)+".txt", decrypted, 0644)
-	check(err)
-	err = os.WriteFile("errors/decrypted_"+strings.ToLower(mode)+".txt", content, 0644)
-}
-
-func ecbEncryption(block cipher.Block, content []byte) []byte {
+func ecbEncryption(content []byte) []byte {
 	encrypted := make([]byte, len(content))
 	blockSize := 16
-	for bs, be := 0, blockSize; bs < len(content); bs, be = bs+blockSize, be+blockSize {
-		block.Encrypt(encrypted[bs:be], content[:16])
-		content = content[16:]
+	for bs, be := 0, blockSize; 0 < len(content); bs, be = bs+blockSize, be+blockSize {
+		c.Encrypt(encrypted[bs:be], content[:blockSize])
+		content = content[blockSize:]
 	}
 	return encrypted
 }
 
-func ecbDecryption(block cipher.Block, content []byte) []byte {
+func ecbDecryption(content []byte) []byte {
 	decrypted := make([]byte, len(content))
 	blockSize := 16
-	for bs, be := 0, blockSize; bs < len(content); bs, be = bs+blockSize, be+blockSize {
-		block.Decrypt(decrypted[bs:be], content[16:])
-		content = content[16:]
+	for bs, be := 0, blockSize; 0 < len(content); bs, be = bs+blockSize, be+blockSize {
+    c.Decrypt(decrypted[bs:be], content[:blockSize])
+		content = content[blockSize:]
 	}
 	return decrypted
 }
@@ -202,14 +188,26 @@ func cbcFromECB() {
 	block, err := aes.NewCipher([]byte("1234567890123456"))
 	check(err)
 	iv := []byte("1234567890123456")
-	content := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit blandit.")
+	content := []byte("Lorem ipsum dolor sit amet, consectetur lit")
 	encrypted := cbcEncryption(block, iv, content)
-	fmt.Printf("CBC: %s\n", encrypted)
+	fmt.Printf("CBC: %08b\n", encrypted)
 	decrypted := cbcDecryption(block, iv, encrypted)
 	fmt.Printf("Decrypted: %s\n", string(decrypted))
 }
 
 func cbcEncryption(block cipher.Block, iv []byte, content []byte) []byte {
+  paddingSize := 16 - len(content)%16
+  padding := make([]byte, paddingSize)
+  for i := 0; i < paddingSize; i++ {
+    if i == 0 {
+      padding[i] = byte(1)
+    } else if i != paddingSize-1 {
+      padding[i] = byte(0)
+    }  else {
+      padding[i] = byte(paddingSize)
+    }
+  }
+  content = append(content, padding...)
 	encrypted := make([]byte, len(content))
 	blockSize := 16
 	for bs, be := 0, blockSize; bs < len(content); bs, be = bs+blockSize, be+blockSize {
@@ -226,29 +224,32 @@ func cbcDecryption(block cipher.Block, iv []byte, content []byte) []byte {
 	decrypted := make([]byte, len(content))
 	blockSize := 16
 	for bs, be := 0, blockSize; bs < len(content); bs, be = bs+blockSize, be+blockSize {
-		for i := 0; i < blockSize; i++ {
-			decrypted[bs+i] ^= iv[i]
-		}
 		block.Decrypt(decrypted[bs:be], content[bs:be])
 		copy(iv, content[bs:be])
 	}
+  if paddingValidation(decrypted) {
+    decrypted = decrypted[:len(decrypted)-int(decrypted[len(decrypted)-1])]
+  }
 	return decrypted
 }
 
+func paddingValidation(content []byte) bool {
+  padding := int(content[len(content)-1])
+  for i := 0; i < padding - 2; i++ {
+    if content[len(content)-2-i] != byte(0) {
+      return false
+    }
+  }
+  if content[len(content)-padding] != byte(1) {
+    return false
+  }
+  return true
+}
+
 func main() {
-	files := readFiles()
-	resultFile, _ = os.Create("results.csv")
-	for _, file := range files {
-		stats, err := file.Stat()
-		check(err)
-		fmt.Printf("File: %s, Size: %d bytes\n", stats.Name(), stats.Size())
-		content := make([]byte, stats.Size())
-		_, err = file.Read(content)
-		check(err)
-		key := []byte("1234567890123456")
-		iv := []byte("1234567890123456")
-		timeEncryptionComparison(content, key, iv, stats.Size())
-	}
+  initValues()
+
+  timeEncryptionComparison()
 
 	errorPropagationComprasion()
 
