@@ -6,14 +6,13 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"fmt"
+	"golang.org/x/crypto/sha3"
 	"hash"
 	"math/bits"
 	"math/rand"
 	"os"
-	"strings"
+	"sort"
 	"time"
-
-	"golang.org/x/crypto/sha3"
 )
 
 var md5h hash.Hash
@@ -22,7 +21,10 @@ var sha256h hash.Hash
 var sha224h hash.Hash
 var sha512h hash.Hash
 var sha384h hash.Hash
-var sha3h hash.Hash
+var sha3_224h hash.Hash
+var sha3_256h hash.Hash
+var sha3_384h hash.Hash
+var sha3_512h hash.Hash
 
 var hashFuncs = map[string]hash.Hash{}
 
@@ -31,16 +33,22 @@ func initHash() {
 	sha1h = sha1.New()
 	sha256h = sha256.New()
 	sha512h = sha512.New()
-	sha3h = sha3.New512()
+	sha3_224h = sha3.New224()
+  sha3_256h = sha3.New256()
+  sha3_384h = sha3.New384()
+  sha3_512h = sha3.New512()
 	sha224h = sha256.New224()
 	sha384h = sha512.New384()
 	hashFuncs["md5"] = md5h
 	hashFuncs["sha1"] = sha1h
-	hashFuncs["sha256"] = sha256h
-	hashFuncs["sha224"] = sha224h
-	hashFuncs["sha512"] = sha512h
-	hashFuncs["sha384"] = sha384h
-	hashFuncs["sha3"] = sha3h
+	hashFuncs["sha2-256"] = sha256h
+	hashFuncs["sha2-224"] = sha224h
+	hashFuncs["sha2-512"] = sha512h
+	hashFuncs["sha2-384"] = sha384h
+  hashFuncs["sha3-224"] = sha3_224h
+  hashFuncs["sha3-256"] = sha3_256h
+  hashFuncs["sha3-384"] = sha3_384h
+	hashFuncs["sha3-512"] = sha3_512h 
 	var err error
 	resultFile, err = os.Create("result.csv")
 	check(err)
@@ -54,9 +62,17 @@ func check(e error) {
 	}
 }
 
-func addScore(score []string) {
-	scoreStr := strings.Join(score, ",")
-	resultFile.WriteString(scoreStr + "\n")
+func addScore(score map[string]string) {
+	var keys []string
+	for k := range score {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var result string
+	for _, k := range keys {
+		result += score[k] + ", "
+	}
+	resultFile.WriteString(result + "\n")
 }
 
 func readFiles() []*os.File {
@@ -86,7 +102,7 @@ func speedTest() {
 	fmt.Println("Speed test:")
 	files := readFiles()
 	for _, file := range files {
-		scores := []string{}
+		scores := map[string]string{}
 		stats, err := file.Stat()
 		check(err)
 		content := make([]byte, stats.Size())
@@ -100,7 +116,7 @@ func speedTest() {
 			stopTime := time.Since(startTime)
 			v.Reset()
 			fmt.Printf("%s: %v\n", k, stopTime)
-			scores = append(scores, stopTime.String())
+			scores[k] = stopTime.String()
 		}
 		addScore(scores)
 	}
@@ -137,13 +153,13 @@ func findCollision(method hash.Hash, to int, wordsCount int) {
 }
 
 func shortMD5Test() {
-	input := randomString(4)
+	input := randomString(10)
 	fmt.Println("Short MD5 test:")
 	fmt.Printf("Input: %s\n", input)
 	md5h.Write([]byte(input))
 	fmt.Printf("MD5: %x\n", md5h.Sum(nil))
 	md5h.Reset()
-	input = "Koty"
+	input = "Microsoft"
 	fmt.Printf("Input: %s\n", input)
 	md5h.Write([]byte(input))
 	fmt.Printf("MD5: %x\n", md5h.Sum(nil))
@@ -168,7 +184,7 @@ func sacTest() {
 		for i := 0; i < len(orginal); i++ {
 			diff += bits.OnesCount8(orginal[i] ^ modified[i])
 		}
-		fmt.Printf("Changed bits %d%%\n", (100*diff/(len(orginal)*8)))
+		fmt.Printf("Changed bits %d%%\n", (100 * diff / (len(orginal) * 8)))
 	}
 }
 
@@ -177,6 +193,6 @@ func main() {
 	userInput()
 	speedTest()
 	shortMD5Test()
-	findCollision(md5h, 4, 100000)
+	findCollision(sha3_224h, 2, 250)
 	sacTest()
 }
